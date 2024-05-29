@@ -51,7 +51,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.Flags().StringVar(&opts.region, "region", os.Getenv("REGION"), "Azure region")
 	rootCmd.Flags().IntVar(&opts.port, "port", 8443, "port to listen on")
 
-	rootCmd.Flags().BoolVar(&opts.useAuthCode, "use-auth-code", true, "Login using OAuth Authorization Code. This should be used for most cases where a browser is available.")
+	rootCmd.Flags().BoolVar(&opts.useAuthCode, "use-auth-code", false, "Login using OAuth Authorization Code. This should be used for most cases where a browser is available.")
 	rootCmd.Flags().StringVar(&opts.clustersServiceURL, "clusters-service-url", "https://api.openshift.com", "URL of the OCM API gateway.")
 	rootCmd.Flags().StringVar(&opts.clustersServiceTokenURL, "clusters-service-token-url", "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token", "OpenID token URL.")
 	rootCmd.Flags().BoolVar(&opts.insecure, "insecure", false, "Skip validating TLS for clusters-service.")
@@ -93,7 +93,7 @@ func (opts *FrontendOpts) Run() error {
 	// Initialize Clusters Service Client
 	conn, err := opts.InitClustersServiceConn(logger)
 	if err != nil {
-		return err
+		logger.Error(fmt.Sprintf("Connection to CS failed: %v", err))
 	}
 
 	f := frontend.NewFrontend(logger, listener, prometheusEmitter, dbClient, opts.region, conn)

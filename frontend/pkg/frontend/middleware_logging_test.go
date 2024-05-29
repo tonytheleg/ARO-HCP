@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Azure/ARO-HCP/frontend/pkg/config"
 	"github.com/Azure/ARO-HCP/internal/api"
 	"github.com/Azure/ARO-HCP/internal/api/arm"
 )
@@ -44,7 +45,7 @@ func TestMiddlewareLoggingPostMux(t *testing.T) {
 		request.Header = tt.header
 
 		// we assume the request carries a logger, we set it explicitly to not fail
-		ctx := ContextWithLogger(request.Context(), DefaultLogger())
+		ctx := ContextWithLogger(request.Context(), config.DefaultLogger())
 		request = request.WithContext(ctx)
 
 		next := func(w http.ResponseWriter, r *http.Request) {

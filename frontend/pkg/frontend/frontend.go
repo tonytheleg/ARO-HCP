@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	sdk "github.com/openshift-online/ocm-sdk-go"
 	"log/slog"
 	"net"
 	"net/http"
@@ -16,6 +15,8 @@ import (
 	"path"
 	"strings"
 	"sync/atomic"
+
+	sdk "github.com/openshift-online/ocm-sdk-go"
 
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/google/uuid"
@@ -77,7 +78,10 @@ func NewFrontend(logger *slog.Logger, listener net.Listener, emitter Emitter, db
 	subscriptionStateMuxValidator := NewSubscriptionStateMuxValidator(&f.cache)
 
 	// Setup metrics middleware
-	metricsMiddleware := MetricsMiddleware{Emitter: emitter}
+	metricsMiddleware := MetricsMiddleware{
+		Emitter: emitter,
+		cache:   &f.cache,
+	}
 
 	mux := NewMiddlewareMux(
 		MiddlewarePanic,
@@ -316,13 +320,23 @@ func (f *Frontend) ArmResourceCreateOrUpdate(writer http.ResponseWriter, request
 	versionedRequestCluster.Normalize(cluster)
 
 	parsed, _ := azure.ParseResourceID(resourceID)
-	doc, err := f.DbClient.GetClusterDoc(ctx, resourceID, parsed.SubscriptionID)
+	var doc *database.HCPOpenShiftClusterDocument
+	doc, err = f.DbClient.GetClusterDoc(ctx, resourceID, parsed.SubscriptionID)
 	if err != nil {
-		f.logger.Error("failed to fetch document for %s: %v", resourceID, err)
-		arm.WriteInternalServerError(writer)
-		return
+		if errors.Is(err, database.ErrNotFound) {
+			f.logger.Info(fmt.Sprintf("existing document not found for cluster - creating one for %s", resourceID))
+			doc = &database.HCPOpenShiftClusterDocument{
+				ID:           uuid.New().String(),
+				Key:          resourceID,
+				ClusterID:    NewUID(),
+				PartitionKey: parsed.SubscriptionID,
+			}
+		} else {
+			f.logger.Error("failed to fetch document for %s: %v", resourceID, err)
+			arm.WriteInternalServerError(writer)
+			return
+		}
 	}
-
 	err = f.DbClient.SetClusterDoc(ctx, doc)
 	if err != nil {
 		f.logger.Error("failed to create document for resource %s: %v", resourceID, err)

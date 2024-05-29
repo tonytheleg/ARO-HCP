@@ -110,6 +110,7 @@ func (mm MetricsMiddleware) Metrics() MiddlewareFunc {
 			"api_version": r.URL.Query().Get(APIVersionKey),
 			"code":        strconv.Itoa(lrw.statusCode),
 			"route":       routePattern,
+			"state":       "Unknown",
 		})
 
 		mm.Emitter.EmitGauge("frontend_duration", float64(duration), map[string]string{
@@ -117,6 +118,7 @@ func (mm MetricsMiddleware) Metrics() MiddlewareFunc {
 			"api_version": r.URL.Query().Get(APIVersionKey),
 			"code":        strconv.Itoa(lrw.statusCode),
 			"route":       routePattern,
+			"state":       "Unknown",
 		})
 	}
 }
