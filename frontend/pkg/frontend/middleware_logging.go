@@ -1,10 +1,11 @@
-package main
+package frontend
 
 // Copyright (c) Microsoft Corporation.
 // Licensed under the Apache License 2.0.
 
 import (
 	"fmt"
+	"github.com/Azure/ARO-HCP/frontend/pkg/config"
 	"io"
 	"log/slog"
 	"net/http"
@@ -52,7 +53,7 @@ func MiddlewareLogging(w http.ResponseWriter, r *http.Request, next http.Handler
 
 	logger, err := LoggerFromContext(r.Context())
 	if err != nil {
-		DefaultLogger().Error(err.Error())
+		config.DefaultLogger().Error(err.Error())
 		arm.WriteInternalServerError(w)
 		return
 	}
@@ -87,7 +88,7 @@ func MiddlewareLoggingPostMux(w http.ResponseWriter, r *http.Request, next http.
 
 	logger, err := LoggerFromContext(ctx)
 	if err != nil {
-		DefaultLogger().Error(err.Error())
+		config.DefaultLogger().Error(err.Error())
 		arm.WriteInternalServerError(w)
 		return
 	}

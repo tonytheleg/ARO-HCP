@@ -1,4 +1,4 @@
-package main
+package frontend
 
 // Copyright (c) Microsoft Corporation.
 // Licensed under the Apache License 2.0.
@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	sdk "github.com/openshift-online/ocm-sdk-go"
 	"log/slog"
 	"net"
 	"net/http"
@@ -16,14 +17,13 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/Azure/ARO-HCP/frontend/pkg/database"
 	"github.com/Azure/ARO-HCP/internal/api"
 	"github.com/Azure/ARO-HCP/internal/api/arm"
-	"github.com/Azure/ARO-HCP/internal/metrics"
 )
 
 const (
@@ -37,14 +37,15 @@ const (
 )
 
 type Frontend struct {
+	conn     *sdk.Connection
 	logger   *slog.Logger
 	listener net.Listener
 	server   http.Server
 	cache    Cache
-	dbClient DBClient
+	DbClient database.DBClient
 	ready    atomic.Value
 	done     chan struct{}
-	metrics  metrics.Emitter
+	metrics  Emitter
 	region   string
 }
 
@@ -55,8 +56,9 @@ func MuxPattern(method string, segments ...string) string {
 	return fmt.Sprintf("%s /%s", method, strings.ToLower(path.Join(segments...)))
 }
 
-func NewFrontend(logger *slog.Logger, listener net.Listener, emitter metrics.Emitter, dbClient *DBClient, region string) *Frontend {
+func NewFrontend(logger *slog.Logger, listener net.Listener, emitter Emitter, dbClient *database.DBClient, region string, conn *sdk.Connection) *Frontend {
 	f := &Frontend{
+		conn:     conn,
 		logger:   logger,
 		listener: listener,
 		metrics:  emitter,
@@ -67,7 +69,7 @@ func NewFrontend(logger *slog.Logger, listener net.Listener, emitter metrics.Emi
 			},
 		},
 		cache:    *NewCache(),
-		dbClient: *dbClient,
+		DbClient: *dbClient,
 		done:     make(chan struct{}),
 		region:   region,
 	}
@@ -314,25 +316,14 @@ func (f *Frontend) ArmResourceCreateOrUpdate(writer http.ResponseWriter, request
 	versionedRequestCluster.Normalize(cluster)
 
 	parsed, _ := azure.ParseResourceID(resourceID)
-	var doc *HCPOpenShiftClusterDocument
-	doc, err = f.dbClient.GetClusterDoc(ctx, resourceID, parsed.SubscriptionID)
+	doc, err := f.DbClient.GetClusterDoc(ctx, resourceID, parsed.SubscriptionID)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			f.logger.Info(fmt.Sprintf("existing document not found for cluster - creating one for %s", resourceID))
-			doc = &HCPOpenShiftClusterDocument{
-				ID:           uuid.New().String(),
-				Key:          resourceID,
-				ClusterID:    NewUID(),
-				PartitionKey: parsed.SubscriptionID,
-			}
-		} else {
-			f.logger.Error("failed to fetch document for %s: %v", resourceID, err)
-			arm.WriteInternalServerError(writer)
-			return
-		}
+		f.logger.Error("failed to fetch document for %s: %v", resourceID, err)
+		arm.WriteInternalServerError(writer)
+		return
 	}
 
-	err = f.dbClient.SetClusterDoc(ctx, doc)
+	err = f.DbClient.SetClusterDoc(ctx, doc)
 	if err != nil {
 		f.logger.Error("failed to create document for resource %s: %v", resourceID, err)
 	}
@@ -391,9 +382,9 @@ func (f *Frontend) ArmResourceDelete(writer http.ResponseWriter, request *http.R
 	f.cache.DeleteCluster(resourceID)
 
 	parsed, _ := azure.ParseResourceID(resourceID)
-	err = f.dbClient.DeleteClusterDoc(ctx, resourceID, parsed.SubscriptionID)
+	err = f.DbClient.DeleteClusterDoc(ctx, resourceID, parsed.SubscriptionID)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
+		if errors.Is(err, database.ErrNotFound) {
 			f.logger.Info(fmt.Sprintf("cluster document cannot be deleted -- document not found for %s", resourceID))
 			writer.WriteHeader(http.StatusNoContent)
 			return
@@ -427,9 +418,9 @@ func (f *Frontend) ArmSubscriptionGet(writer http.ResponseWriter, request *http.
 	ctx := request.Context()
 	subId := request.PathValue(PathSegmentSubscriptionID)
 
-	doc, err := f.dbClient.GetSubscriptionDoc(ctx, subId)
+	doc, err := f.DbClient.GetSubscriptionDoc(ctx, subId)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
+		if errors.Is(err, database.ErrNotFound) {
 			f.logger.Error(fmt.Sprintf("document not found for subscription %s", subId))
 			writer.WriteHeader(http.StatusNotFound)
 			return
@@ -482,12 +473,12 @@ func (f *Frontend) ArmSubscriptionPut(writer http.ResponseWriter, request *http.
 		"state":          string(subscription.State),
 	})
 
-	var doc *SubscriptionDocument
-	doc, err = f.dbClient.GetSubscriptionDoc(ctx, subId)
+	var doc *database.SubscriptionDocument
+	doc, err = f.DbClient.GetSubscriptionDoc(ctx, subId)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
+		if errors.Is(err, database.ErrNotFound) {
 			f.logger.Info(fmt.Sprintf("existing document not found for subscription - creating one for %s", subId))
-			doc = &SubscriptionDocument{
+			doc = &database.SubscriptionDocument{
 				ID:           uuid.New().String(),
 				PartitionKey: subId,
 				Subscription: &subscription,
@@ -502,7 +493,7 @@ func (f *Frontend) ArmSubscriptionPut(writer http.ResponseWriter, request *http.
 		doc.Subscription = &subscription
 	}
 
-	err = f.dbClient.SetSubscriptionDoc(ctx, doc)
+	err = f.DbClient.SetSubscriptionDoc(ctx, doc)
 	if err != nil {
 		f.logger.Error("failed to create document for subscription %s: %v", subId, err)
 	}
