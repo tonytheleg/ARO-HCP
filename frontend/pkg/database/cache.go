@@ -1,6 +1,8 @@
 package database
 
-import "context"
+import (
+	"context"
+)
 
 var _ DBClient = &Cache{}
 
@@ -29,7 +31,7 @@ func (c *Cache) GetClusterDoc(ctx context.Context, resourceID string, partitionK
 }
 
 func (c *Cache) SetClusterDoc(ctx context.Context, doc *HCPOpenShiftClusterDocument) error {
-	c.cluster[doc.ResourceID] = doc
+	c.cluster[doc.Key] = doc
 	return nil
 }
 

@@ -47,7 +47,7 @@ func MiddlewareValidateStatic(w http.ResponseWriter, r *http.Request, next http.
 			}
 		}
 
-		if resourceID.Name != "" {
+		if resourceID.Name != "" && resourceID.ResourceType.String() != "Microsoft.Resources/subscriptions" {
 			if !rxResourceName.MatchString(resourceID.Name) {
 				arm.WriteError(w, http.StatusBadRequest,
 					arm.CloudErrorInvalidResourceName,
@@ -59,6 +59,5 @@ func MiddlewareValidateStatic(w http.ResponseWriter, r *http.Request, next http.
 			}
 		}
 	}
-
 	next(w, r)
 }
