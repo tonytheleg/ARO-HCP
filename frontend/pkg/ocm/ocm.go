@@ -17,8 +17,8 @@ const (
 )
 
 // ConvertCStoFrontend converts a CS Cluster object into HCPOpenShiftCluster object
-func ConvertCStoFrontend(cluster cmv1.Cluster) (*api.HCPOpenShiftCluster, error) {
-	hcpcluster := api.HCPOpenShiftCluster{
+func ConvertCStoFrontend(cluster *cmv1.Cluster) (*api.HCPOpenShiftCluster, error) {
+	hcpcluster := &api.HCPOpenShiftCluster{
 		TrackedResource: arm.TrackedResource{
 			Location: "",
 			Tags:     nil,
@@ -88,7 +88,7 @@ func ConvertCStoFrontend(cluster cmv1.Cluster) (*api.HCPOpenShiftCluster, error)
 		},
 	}
 
-	return &hcpcluster, nil
+	return hcpcluster, nil
 }
 
 // BuildCSCluster creates a CS Cluster object from an HCPOpenShiftCluster object
